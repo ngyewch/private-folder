@@ -1,0 +1,24 @@
+version: 3
+
+tasks:
+  clean:
+    desc: Clean
+    cmds:
+      - rm -rf dist
+
+  build:
+    desc: Build
+    cmds:
+      - goreleaser build --snapshot --clean
+
+  dependencyUpdates:
+    desc: Show dependency updates
+    cmds:
+      - go mod download
+      - go mod tidy
+      - go list -u -m -json all | go-mod-outdated -update -direct
+
+  mingo:
+    cmds:
+      - mise exec go@1.24.3 -- mise install 'go:github.com/bobg/mingo/cmd/mingo@0.13.1'
+      - mise exec 'go:github.com/bobg/mingo/cmd/mingo@0.13.1' -- mingo -tests -v
