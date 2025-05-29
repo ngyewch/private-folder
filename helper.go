@@ -77,11 +77,6 @@ func (helper *PrivateFolderHelper) Init() error {
 					if err != nil {
 						return err
 					}
-					localPrivateFolderPath := filepath.Join(baseDir, "files")
-					err = os.Symlink(targetPrivateFolderPath, localPrivateFolderPath)
-					if err != nil {
-						return err
-					}
 					config.FolderName = folderName
 					break
 				} else {
@@ -97,6 +92,40 @@ func (helper *PrivateFolderHelper) Init() error {
 			return err
 		}
 
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	err = func() error {
+		r, err := os.Open(configPath)
+		if err != nil {
+			return err
+		}
+		defer func(r *os.File) {
+			_ = r.Close()
+		}(r)
+
+		tomlDecoder := toml.NewDecoder(r)
+		err = tomlDecoder.Decode(&config)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}()
+	if err != nil {
+		return err
+	}
+
+	localPrivateFolderPath := filepath.Join(baseDir, "files")
+	err = createDirSymlink(localPrivateFolderPath, func(path string) error {
+		targetPrivateFolderPath := filepath.Join(xdg.ConfigHome, "private-folder", config.FolderName)
+		err = os.Symlink(targetPrivateFolderPath, path)
+		if err != nil {
+			return err
+		}
 		return nil
 	})
 	if err != nil {
@@ -150,7 +179,7 @@ func writeConfigFile(config PrivateFolderConfig, configPath string) error {
 }
 
 func createDir(dir string, perm os.FileMode) error {
-	stat, err := os.Stat(dir)
+	stat, err := os.Lstat(dir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			err = os.MkdirAll(dir, perm)
@@ -169,7 +198,7 @@ func createDir(dir string, perm os.FileMode) error {
 }
 
 func createFile(path string, create func(path string) error) error {
-	stat, err := os.Stat(path)
+	stat, err := os.Lstat(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			err = create(path)
@@ -182,6 +211,32 @@ func createFile(path string, create func(path string) error) error {
 	} else {
 		if stat.IsDir() {
 			return fmt.Errorf("%s exists but is not a file", path)
+		}
+	}
+	return nil
+}
+
+func createDirSymlink(dir string, create func(path string) error) error {
+	stat, err := os.Lstat(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			err = create(dir)
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	} else {
+		if (stat.Mode() & os.ModeSymlink) == 0 {
+			return fmt.Errorf("%s exists but is not a symlink", dir)
+		}
+		stat, err = os.Stat(dir)
+		if err != nil {
+			return err
+		}
+		if !stat.IsDir() {
+			return fmt.Errorf("%s exists but is not a directory", dir)
 		}
 	}
 	return nil
